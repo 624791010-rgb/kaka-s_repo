@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>__TITLE__</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: #172033;
+        background: linear-gradient(180deg, #dfeeff 0%, #f6fbff 100%);
+      }
+      main { width: min(100%, 560px); margin: 0 auto; padding: 28px 16px 48px; }
+      h1 { margin: 0 0 12px; font-size: 32px; line-height: 1.15; }
+      .intro, .card, .result { border-radius: 20px; background: rgba(255,255,255,.92); box-shadow: 0 16px 40px rgba(62,103,159,.16); }
+      .intro { margin: 0 0 16px; padding: 16px; color: #66748a; font-weight: 700; line-height: 1.7; }
+      .progress { color: #66748a; font-weight: 800; }
+      .card { margin: 0 0 14px; padding: 18px 16px; }
+      .section { margin: 0 0 8px; color: #2f91ff; font-size: 13px; font-weight: 900; }
+      .title { margin: 0 0 14px; font-size: 19px; font-weight: 900; line-height: 1.42; }
+      .options { display: grid; gap: 10px; }
+      button, input { font: inherit; }
+      .option {
+        display: flex; width: 100%; min-height: 54px; align-items: center; gap: 10px;
+        border: 2px solid transparent; border-radius: 16px; background: #fff; color: #657188;
+        padding: 12px; text-align: left; cursor: pointer; font-weight: 850;
+      }
+      .option.selected { border-color: #69b7ff; background: #c3e2ff; color: #1688ff; }
+      .key { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border-radius: 50%; background: #eef2f7; font-size: 13px; font-weight: 900; }
+      .selected .key { background: #2f91ff; color: #fff; }
+      .alloc { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 12px; border-radius: 16px; background: #fff; }
+      .stepper { display: grid; grid-template-columns: 32px 44px 32px; gap: 6px; }
+      .stepper button { border: 0; border-radius: 10px; background: #edf6ff; color: #2f91ff; font-size: 20px; font-weight: 900; cursor: pointer; }
+      .stepper input { width: 44px; border: 1px solid #d8e4f2; border-radius: 10px; text-align: center; font-weight: 900; }
+      .primary, .secondary { width: 100%; min-height: 52px; border: 0; border-radius: 16px; font-size: 17px; font-weight: 900; cursor: pointer; }
+      .primary { position: sticky; bottom: 12px; background: #2f91ff; color: #fff; box-shadow: 0 12px 28px rgba(47,145,255,.28); }
+      .secondary { margin-top: 12px; background: #fff; color: #2f91ff; }
+      .error { min-height: 22px; color: #f05b6b; text-align: center; font-weight: 850; }
+      .hidden { display: none; }
+      .result { padding: 22px 18px; }
+      .portrait { display: block; width: min(72%, 280px); margin: 0 auto 12px; }
+      .persona-name { text-align: center; font-size: 30px; font-weight: 950; }
+      .persona-desc, .fit { color: #5c6a82; line-height: 1.75; font-weight: 750; }
+      .axis { margin: 12px 0; padding: 12px; border-radius: 16px; background: #f0f7ff; }
+      .axis-head, .axis-labels { display: flex; justify-content: space-between; gap: 12px; font-weight: 850; }
+      .axis-labels { margin-top: 7px; color: #8190a5; font-size: 12px; }
+      .bar { height: 8px; margin-top: 8px; border-radius: 999px; background: #d8e7f7; overflow: hidden; }
+      .fill { height: 100%; background: #2f91ff; }
+      .report { white-space: pre-wrap; color: #344055; line-height: 1.82; font-weight: 650; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section id="quiz">
+        <h1 id="pageTitle"></h1>
+        <div id="intro" class="intro"></div>
+        <p id="progress" class="progress"></p>
+        <div id="questions"></div>
+        <button id="submit" class="primary" type="button">生成结果</button>
+        <p id="error" class="error"></p>
+      </section>
+      <section id="result" class="hidden">
+        <h1>测试结果</h1>
+        <div id="resultCard" class="result"></div>
+        <button id="reset" class="secondary" type="button">重新测试</button>
+      </section>
+    </main>
+    <script>
+      const CONFIG = __CONFIG_JSON__;
+      const answers = Object.fromEntries(CONFIG.questions.map((q) => [q.id, q.type === "allocation" ? Object.fromEntries(q.options.map((o) => [o.key, 0])) : ""]));
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) => String(s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+      const sum = (obj) => Object.values(obj).reduce((a, b) => a + Number(b || 0), 0);
+      function complete(q) { return q.type === "allocation" ? sum(answers[q.id]) === q.total : q.options.some((o) => o.key === answers[q.id]); }
+      function progress() { $("progress").textContent = `已完成 ${CONFIG.questions.filter(complete).length} / ${CONFIG.questions.length}`; }
+      function renderQuestions() {
+        $("questions").innerHTML = CONFIG.questions.map((q, i) => `<article class="card" data-q="${q.id}"><p class="section">${esc(q.section || "")}</p><h2 class="title">${i + 1}. ${esc(q.title)}</h2>${q.type === "allocation" ? renderAllocation(q) : renderSingle(q)}</article>`).join("");
+        progress();
+      }
+      function renderSingle(q) { return `<div class="options">${q.options.map((o) => `<button class="option" type="button" data-q="${q.id}" data-o="${o.key}"><span class="key">${o.key}</span><span>${esc(o.label)}</span></button>`).join("")}</div>`; }
+      function renderAllocation(q) { return `<p class="progress" data-total="${q.id}">当前 0 / ${q.total}</p><div class="options">${q.options.map((o) => `<div class="alloc"><b><span class="key">${o.key}</span> ${esc(o.label)}</b><span class="stepper"><button type="button" data-act="minus" data-q="${q.id}" data-o="${o.key}">-</button><input value="0" inputmode="numeric" data-q="${q.id}" data-o="${o.key}" /><button type="button" data-act="plus" data-q="${q.id}" data-o="${o.key}">+</button></span></div>`).join("")}</div>`; }
+      function updateAllocation(qid, option, value) {
+        answers[qid][option] = Math.max(0, Number.isFinite(value) ? value : 0);
+        document.querySelector(`input[data-q="${qid}"][data-o="${option}"]`).value = answers[qid][option];
+        const q = CONFIG.questions.find((item) => item.id === qid);
+        document.querySelector(`[data-total="${qid}"]`).textContent = `当前 ${sum(answers[qid])} / ${q.total}`;
+        progress();
+      }
+      function scoreRule(rule) {
+        const q = CONFIG.questions.find((item) => item.id === rule.questionId);
+        const answer = answers[rule.questionId];
+        if (q.type === "allocation") {
+          const total = sum(answer);
+          if (total !== q.total) throw new Error(`${q.id} allocation total must equal ${q.total}`);
+          return Object.entries(answer).reduce((acc, [key, value]) => acc + value * rule.optionScores[key], 0) / total;
+        }
+        return rule.optionScores[answer];
+      }
+      function axisScore(axis) {
+        const rules = CONFIG.scoring.filter((rule) => rule.axisKey === axis.key);
+        const totalWeight = rules.reduce((acc, rule) => acc + rule.weight, 0);
+        return Math.round((rules.reduce((acc, rule) => acc + scoreRule(rule) * rule.weight, 0) / totalWeight) * 100) / 100;
+      }
+      function calculate() {
+        const scores = Object.fromEntries(CONFIG.axes.map((axis) => [axis.key, axisScore(axis)]));
+        const key = CONFIG.axes.map((axis) => scores[axis.key] >= axis.threshold ? axis.highCode : axis.lowCode).join("_");
+        const persona = CONFIG.personas.find((item) => item.key === key);
+        if (!persona) throw new Error(`Missing persona ${key}`);
+        return { key, scores, persona };
+      }
+      function renderResult(result) {
+        $("resultCard").innerHTML = `${result.persona.imageSrc ? `<img class="portrait" src="${esc(result.persona.imageSrc)}" alt="${esc(result.persona.name)}" />` : ""}<h2 class="persona-name">${esc(result.persona.name)}</h2><p class="persona-desc">${esc(result.persona.description)}</p>${CONFIG.axes.map((axis) => `<div class="axis"><div class="axis-head"><span>${esc(axis.name)}</span><span>${result.scores[axis.key].toFixed(1)}</span></div><div class="bar"><div class="fill" style="width:${Math.max(0, Math.min(100, result.scores[axis.key]))}%"></div></div><div class="axis-labels"><span>${esc(axis.lowLabel)}</span><span>${esc(axis.highLabel)}</span></div></div>`).join("")}<div class="report">${esc(result.persona.report)}</div>${result.persona.fit ? `<p class="fit">${esc(result.persona.fit)}</p>` : ""}`;
+      }
+      $("questions").addEventListener("click", (e) => {
+        const option = e.target.closest(".option");
+        if (option) {
+          answers[option.dataset.q] = option.dataset.o;
+          document.querySelectorAll(`.option[data-q="${option.dataset.q}"]`).forEach((item) => item.classList.toggle("selected", item.dataset.o === option.dataset.o));
+          progress();
+        }
+        const step = e.target.closest("[data-act]");
+        if (step) updateAllocation(step.dataset.q, step.dataset.o, answers[step.dataset.q][step.dataset.o] + (step.dataset.act === "plus" ? 1 : -1));
+      });
+      $("questions").addEventListener("input", (e) => { if (e.target.matches("input[data-q]")) updateAllocation(e.target.dataset.q, e.target.dataset.o, Number.parseInt(e.target.value, 10)); });
+      $("submit").addEventListener("click", () => {
+        const missing = CONFIG.questions.find((q) => !complete(q));
+        if (missing) { $("error").textContent = `请先完成：${missing.title}`; document.querySelector(`[data-q="${missing.id}"]`).scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+        $("error").textContent = "";
+        renderResult(calculate());
+        $("quiz").classList.add("hidden");
+        $("result").classList.remove("hidden");
+        scrollTo({ top: 0, behavior: "smooth" });
+      });
+      $("reset").addEventListener("click", () => location.reload());
+      $("pageTitle").textContent = CONFIG.meta.title;
+      $("intro").textContent = CONFIG.meta.description || "";
+      renderQuestions();
+    </script>
+  </body>
+</html>

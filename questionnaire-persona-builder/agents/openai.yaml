@@ -1,0 +1,4 @@
+interface:
+  display_name: "Questionnaire Persona Builder"
+  short_description: "Turn questionnaires into structured persona systems."
+  default_prompt: "Use this skill to turn a questionnaire into axes, scoring rules, persona copy, optional image prompts, and a static demo."
